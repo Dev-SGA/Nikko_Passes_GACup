@@ -219,5 +219,222 @@ def draw_pass_map(df: pd.DataFrame, title: str):
             row["x_start"], row["y_start"],
             row["x_end"], row["y_end"],
             color=color,
-            width=1.***
-
+            width=1.55,
+            headwidth=2.25,
+            headlength=2.25,
+            ax=ax,
+            zorder=3,
+            alpha=alpha,
+        )
+
+        if has_vid:
+            pitch.scatter(
+                row["x_start"], row["y_start"],
+                s=95,
+                marker="o",
+                facecolors="none",
+                edgecolors="#FFD54F",
+                linewidths=2.0,
+                ax=ax,
+                zorder=4,
+            )
+
+        pitch.scatter(
+            row["x_start"], row["y_start"],
+            s=START_DOT_SIZE,
+            marker="o",
+            color=color,
+            edgecolors="white",
+            linewidths=0.8,
+            ax=ax,
+            zorder=5,
+            alpha=alpha,
+        )
+
+    ax.set_title(title, fontsize=12)
+
+    legend_elements = [
+        Line2D([0], [0], color=COLOR_SUCCESS, lw=2.5, label="Successful Pass"),
+        Line2D([0], [0], color=COLOR_FAIL, lw=2.5, label="Unsuccessful Pass"),
+        Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5, label="Progressive Pass (Opta)"),
+        Line2D(
+            [0], [0],
+            marker="o",
+            color="w",
+            markerfacecolor="gray",
+            markeredgecolor="white",
+            markersize=6,
+            label="Start point (click)"
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            color="w",
+            markerfacecolor="gray",
+            markeredgecolor="#FFD54F",
+            markeredgewidth=2,
+            markersize=7,
+            label="Has video"
+        ),
+    ]
+
+    legend = ax.legend(
+        handles=legend_elements,
+        loc="upper left",
+        bbox_to_anchor=(0.01, 0.99),
+        frameon=True,
+        facecolor="white",
+        edgecolor="#cccccc",
+        shadow=False,
+        fontsize="x-small",
+        labelspacing=0.5,
+        borderpad=0.5,
+    )
+    legend.get_frame().set_alpha(1.0)
+
+    arrow = FancyArrowPatch(
+        (0.45, 0.05),
+        (0.55, 0.05),
+        transform=fig.transFigure,
+        arrowstyle="-|>",
+        mutation_scale=15,
+        linewidth=2,
+        color="#333333",
+    )
+    fig.patches.append(arrow)
+
+    fig.text(
+        0.5,
+        0.02,
+        "Attack Direction",
+        ha="center",
+        va="center",
+        fontsize=9,
+        color="#333333",
+    )
+
+    fig.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+    buf.seek(0)
+    img_obj = Image.open(buf)
+    return img_obj, ax, fig
+
+# ==========================
+# Sidebar
+# ==========================
+st.sidebar.header("Match Selection")
+selected_match = st.sidebar.radio("Choose the match", list(full_data.keys()), index=0)
+
+st.sidebar.header("Pass Filter")
+pass_filter = st.sidebar.radio(
+    "Filter passes",
+    ["All Passes", "Successful Only", "Unsuccessful Only", "Progressive Only"],
+    index=0
+)
+
+df = full_data[selected_match].copy()
+
+if pass_filter == "Successful Only":
+    df = df[df["type"].str.contains("WON", case=False)].reset_index(drop=True)
+elif pass_filter == "Unsuccessful Only":
+    df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
+elif pass_filter == "Progressive Only":
+    df = df[df["progressive"]].reset_index(drop=True)
+
+stats = compute_stats(df)
+
+# ==========================
+# Layout
+# ==========================
+col_stats, col_right = st.columns([1, 2], gap="large")
+
+with col_stats:
+    st.subheader("Statistics")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Passes", stats["total_passes"])
+    c2.metric("Successful", stats["successful_passes"])
+    c3.metric("Unsuccessful", stats["unsuccessful_passes"])
+    c4.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
+    c5.metric("Progressive", stats["progressive_passes"])
+
+    st.divider()
+
+    st.subheader("Final Third")
+    c7, c8, c9 = st.columns(3)
+    c7.metric("Total", stats["final_third_total"])
+    c8.metric("Successful", stats["final_third_success"])
+    c9.metric("Unsuccessful", stats["final_third_unsuccess"])
+    st.metric("Accuracy", f'{stats["final_third_accuracy_pct"]:.1f}%')
+
+    st.divider()
+
+    st.subheader("Passes Into the Box")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Total", stats["box_total"])
+    d2.metric("Successful", stats["box_success"])
+    d3.metric("Unsuccessful", stats["box_unsuccess"])
+    st.metric("Accuracy", f'{stats["box_accuracy_pct"]:.1f}%')
+
+with col_right:
+    st.subheader("Pass Map (click the start dot)")
+
+    img_obj, ax, fig = draw_pass_map(df, title=f"Pass Map - {selected_match}")
+    click = streamlit_image_coordinates(img_obj, width=780)
+
+    selected_pass = None
+
+    if click is not None:
+        real_w, real_h = img_obj.size
+        disp_w, disp_h = click["width"], click["height"]
+
+        pixel_x = click["x"] * (real_w / disp_w)
+        pixel_y = click["y"] * (real_h / disp_h)
+
+        mpl_pixel_y = real_h - pixel_y
+        coords_clicked = ax.transData.inverted().transform((pixel_x, mpl_pixel_y))
+        field_x, field_y = coords_clicked[0], coords_clicked[1]
+
+        df_sel = df.copy()
+        df_sel["dist"] = np.sqrt(
+            (df_sel["x_start"] - field_x) ** 2 +
+            (df_sel["y_start"] - field_y) ** 2
+        )
+
+        RADIUS = 7.0
+        candidates = df_sel[df_sel["dist"] < RADIUS].copy()
+
+        if not candidates.empty:
+            candidates["has_video"] = candidates["video"].apply(has_video_value)
+            candidates = candidates.sort_values(
+                by=["has_video", "dist"],
+                ascending=[False, True]
+            )
+            selected_pass = candidates.iloc[0]
+
+    plt.close(fig)
+
+    st.divider()
+    st.subheader("Selected Event")
+
+    if selected_pass is None:
+        st.info("Click the start dot to inspect the pass details.")
+    else:
+        st.success(
+            f"Selected pass: #{int(selected_pass['number'])} ({selected_pass['type']})"
+        )
+        st.write(
+            f"Start: ({selected_pass['x_start']:.2f}, {selected_pass['y_start']:.2f})  \n"
+            f"End: ({selected_pass['x_end']:.2f}, {selected_pass['y_end']:.2f})"
+        )
+        st.write(f"Progressive: {'Yes' if selected_pass['progressive'] else 'No'}")
+
+        if has_video_value(selected_pass["video"]):
+            try:
+                st.video(selected_pass["video"])
+            except Exception:
+                st.error(f"Video file not found: {selected_pass['video']}")
+        else:
+            st.warning("No video is attached to this event.")
