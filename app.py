@@ -21,21 +21,17 @@ st.caption("Click the start dot to select the pass event.")
 # ==========================
 FINAL_THIRD_LINE_X = 80
 
-# Box dimensions for StatsBomb pitch
 BOX_X_MIN = 102
 BOX_Y_MIN = 18
 BOX_Y_MAX = 62
 
-# Goal center in StatsBomb coordinates
 GOAL_X = 120
 GOAL_Y = 40
 
-# Progressive pass thresholds converted to StatsBomb pitch scale
 PROG_OWN_HALF_THRESHOLD = 24
 PROG_CROSS_HALF_THRESHOLD = 12
 PROG_OPP_HALF_THRESHOLD = 8
 
-# Colors
 COLOR_SUCCESS = "#8E8E8E"
 COLOR_FAIL = "#F2A3A3"
 COLOR_PROGRESSIVE = "#2F80ED"
@@ -49,20 +45,17 @@ matches_data = {
         ("PASS WON", 103.55, 32.85, 108.04, 39.67, None),
         ("PASS WON", 86.26, 76.41, 63.99, 66.60, None),
     ],
-
     "Vs Copehagen": [
         ("PASS WON", 100.39, 1.10, 93.91, 5.76, None),
         ("PASS WON", 67.98, 61.28, 64.32, 51.80, None),
         ("PASS WON", 82.61, 54.79, 90.92, 69.26, None),
         ("PASS WON", 99.56, 65.77, 88.26, 57.95, None),
         ("PASS WON", 97.74, 69.09, 105.55, 72.58, None),
-
         ("PASS LOST", 45.70, 24.21, 57.34, 25.04, None),
         ("PASS LOST", 91.09, 29.03, 107.54, 25.70, None),
         ("PASS LOST", 86.60, 14.07, 104.88, 19.89, None),
         ("PASS LOST", 86.93, 51.64, 99.56, 55.13, None),
     ],
-
     "Vs Sporting": [
         ("PASS WON", 70.31, 35.01, 61.66, 46.98, None),
         ("PASS WON", 87.76, 22.38, 83.27, 41.83, None),
@@ -319,9 +312,7 @@ if pass_filter == "Successful Only":
 elif pass_filter == "Unsuccessful Only":
     df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
 elif pass_filter == "Progressive Only":
-    df = df[
-        df["progressive"] & df["type"].str.contains("WON", case=False)
-    ].reset_index(drop=True)
+    df = df[df["progressive"] & df["type"].str.contains("WON", case=False)].reset_index(drop=True)
 
 stats = compute_stats(df)
 
@@ -338,37 +329,11 @@ with col_stats:
     c2.metric("Successful Passes", stats["successful_passes"])
     c3.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
 
-    st.divider()
-
-    st.subheader("Progressive Passes")
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Total", stats["progressive_passes"])
-    p2.metric("Successful", stats["progressive_successful_passes"])
-    p3.metric("Accuracy", f'{stats["progressive_accuracy_pct"]:.1f}%')
-
-    st.divider()
-
-    st.subheader("Final Third")
-    c7, c8, c9 = st.columns(3)
-    c7.metric("Total", stats["final_third_total"])
-    c8.metric("Successful", stats["final_third_success"])
-    c9.metric("Unsuccessful", stats["final_third_unsuccess"])
-    st.metric("Accuracy", f'{stats["final_third_accuracy_pct"]:.1f}%')
-
-    st.divider()
-
-    st.subheader("Passes Into the Box")
-    d1, d2, d3 = st.columns(3)
-    d1.metric("Total", stats["box_total"])
-    d2.metric("Successful", stats["box_success"])
-    d3.metric("Unsuccessful", stats["box_unsuccess"])
-    st.metric("Accuracy", f'{stats["box_accuracy_pct"]:.1f}%')
-
 with col_right:
     st.subheader("Pass Map (click the start dot)")
 
     img_obj, ax, fig = draw_pass_map(df, title=f"Pass Map - {selected_match}")
-    click = streamlit_image_coordinates(img_obj, width=780)
+    click = streamlit_image_coordinates(img_obj, width=980)
 
     selected_pass = None
 
@@ -389,7 +354,7 @@ with col_right:
             (df_sel["y_start"] - field_y) ** 2
         )
 
-        RADIUS = 2.5
+        RADIUS = 4.0
         candidates = df_sel[df_sel["dist"] <= RADIUS].copy()
 
         if not candidates.empty:
