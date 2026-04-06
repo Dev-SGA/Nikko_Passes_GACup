@@ -105,8 +105,8 @@ def is_progressive_pass(x_start, y_start, x_end, y_end) -> bool:
 
     start_own_half = x_start < 60
     end_own_half = x_end < 60
-    start_opp_half = x_start >= 60
     end_opp_half = x_end >= 60
+    start_opp_half = x_start >= 60
 
     if start_own_half and end_own_half:
         return gain >= PROG_OWN_HALF_THRESHOLD
@@ -148,8 +148,16 @@ def compute_stats(df: pd.DataFrame) -> dict:
     unsuccessful = int(df["type"].str.contains("LOST", case=False).sum())
     accuracy = (successful / total_passes * 100.0) if total_passes else 0.0
 
-    key_passes = int(df["video"].apply(has_video_value).sum())
     progressive_total = int(df["progressive"].sum())
+    progressive_successful = int(
+        (df["progressive"] & df["type"].str.contains("WON", case=False)).sum()
+    )
+    progressive_accuracy = (
+        progressive_successful / progressive_total * 100.0
+        if progressive_total else 0.0
+    )
+
+    key_passes = int(df["video"].apply(has_video_value).sum())
 
     in_final_third = df["x_end"] >= FINAL_THIRD_LINE_X
     final_third_total = int(in_final_third.sum())
@@ -174,6 +182,8 @@ def compute_stats(df: pd.DataFrame) -> dict:
         "accuracy_pct": round(accuracy, 2),
         "key_passes": key_passes,
         "progressive_passes": progressive_total,
+        "progressive_successful_passes": progressive_successful,
+        "progressive_accuracy_pct": round(progressive_accuracy, 2),
         "final_third_total": final_third_total,
         "final_third_success": final_third_success,
         "final_third_unsuccess": final_third_unsuccess,
@@ -202,15 +212,15 @@ def draw_pass_map(df: pd.DataFrame, title: str):
 
     for _, row in df.iterrows():
         is_lost = "LOST" in row["type"].upper()
-        is_progressive = bool(row["progressive"])
+        is_progressive_success = bool(row["progressive"]) and not is_lost
         has_vid = has_video_value(row["video"])
 
-        if is_progressive:
-            color = COLOR_PROGRESSIVE
-            alpha = 0.82
-        elif is_lost:
+        if is_lost:
             color = COLOR_FAIL
             alpha = 0.45
+        elif is_progressive_success:
+            color = COLOR_PROGRESSIVE
+            alpha = 0.82
         else:
             color = COLOR_SUCCESS
             alpha = 0.75
@@ -256,7 +266,7 @@ def draw_pass_map(df: pd.DataFrame, title: str):
     legend_elements = [
         Line2D([0], [0], color=COLOR_SUCCESS, lw=2.5, label="Successful Pass"),
         Line2D([0], [0], color=COLOR_FAIL, lw=2.5, label="Unsuccessful Pass"),
-        Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5, label="Progressive Pass (Opta)"),
+        Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5, label="Successful Progressive Pass (Opta)"),
         Line2D(
             [0], [0],
             marker="o",
@@ -341,7 +351,9 @@ if pass_filter == "Successful Only":
 elif pass_filter == "Unsuccessful Only":
     df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
 elif pass_filter == "Progressive Only":
-    df = df[df["progressive"]].reset_index(drop=True)
+    df = df[
+        df["progressive"] & df["type"].str.contains("WON", case=False)
+    ].reset_index(drop=True)
 
 stats = compute_stats(df)
 
@@ -353,12 +365,20 @@ col_stats, col_right = st.columns([1, 2], gap="large")
 with col_stats:
     st.subheader("Statistics")
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # First shelf: totals only
+    c1, c2, c3 = st.columns(3)
     c1.metric("Total Passes", stats["total_passes"])
-    c2.metric("Successful", stats["successful_passes"])
-    c3.metric("Unsuccessful", stats["unsuccessful_passes"])
-    c4.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
-    c5.metric("Progressive", stats["progressive_passes"])
+    c2.metric("Successful Passes", stats["successful_passes"])
+    c3.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
+
+    st.divider()
+
+    # Second shelf: progressive passes
+    st.subheader("Progressive Passes")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Total", stats["progressive_passes"])
+    p2.metric("Successful", stats["progressive_successful_passes"])
+    p3.metric("Accuracy", f'{stats["progressive_accuracy_pct"]:.1f}%')
 
     st.divider()
 
