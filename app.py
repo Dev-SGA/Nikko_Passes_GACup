@@ -1,6 +1,6 @@
 import streamlit as st
 import matplotlib
-matplotlib.use("Agg")          # backend headless – evita warnings no Streamlit
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mplsoccer import Pitch
 import pandas as pd
@@ -15,12 +15,15 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 # Page Configuration
 # ==========================
 st.set_page_config(layout="wide", page_title="Pass Map Dashboard (Interactive)")
-st.title("Pass Map Dashboard")
-st.caption("Click the start dot to select the pass event.")
 
 # ==========================
 # Configuration
 # ==========================
+MINUTES_PLAYED = 67
+
+st.title("Pass Map Dashboard")
+st.caption(f"⏱️ {MINUTES_PLAYED} minutes played — Click the start dot to select the pass event.")
+
 FINAL_THIRD_LINE_X = 80
 
 BOX_X_MIN = 102
@@ -95,6 +98,17 @@ def is_progressive_pass(x_start, y_start, x_end, y_end) -> bool:
         return gain >= PROG_OPP_HALF_THRESHOLD
     else:
         return False
+
+
+def per90(value: int, minutes: int) -> str:
+    """Retorna o valor normalizado por 90 minutos, formatado."""
+    if minutes <= 0:
+        return "—"
+    result = value / minutes * 90
+    # Se o resultado é inteiro (ex: 9.0), mostra sem decimal
+    if result == int(result):
+        return f"{int(result)}"
+    return f"{result:.1f}"
 
 
 # ==========================
@@ -187,9 +201,21 @@ def compute_stats(df: pd.DataFrame) -> dict:
 
 
 # ==========================
+# Metric helper — mostra valor + p90 embaixo
+# ==========================
+def metric_with_p90(container, label: str, value, minutes: int, show_p90: bool = True):
+    """
+    Exibe um st.metric e logo abaixo o valor per 90 em texto pequeno.
+    Para percentuais (accuracy) não faz sentido mostrar p90.
+    """
+    container.metric(label, value)
+    if show_p90 and isinstance(value, (int, np.integer)):
+        container.caption(f"p90: {per90(value, minutes)}")
+
+
+# ==========================
 # Draw pass map
 # ==========================
-# ----- FIGSIZE / DPI fixos para que a imagem gerada tenha tamanho previsível -----
 FIG_W, FIG_H = 7.9, 5.3
 FIG_DPI = 110
 
@@ -223,43 +249,23 @@ def draw_pass_map(df: pd.DataFrame, title: str):
             alpha = 0.75
 
         pitch.arrows(
-            row["x_start"],
-            row["y_start"],
-            row["x_end"],
-            row["y_end"],
-            color=color,
-            width=1.55,
-            headwidth=2.25,
-            headlength=2.25,
-            ax=ax,
-            zorder=3,
-            alpha=alpha,
+            row["x_start"], row["y_start"],
+            row["x_end"], row["y_end"],
+            color=color, width=1.55, headwidth=2.25, headlength=2.25,
+            ax=ax, zorder=3, alpha=alpha,
         )
 
         if has_vid:
             pitch.scatter(
-                row["x_start"],
-                row["y_start"],
-                s=95,
-                marker="o",
-                facecolors="none",
-                edgecolors="#FFD54F",
-                linewidths=2.0,
-                ax=ax,
-                zorder=4,
+                row["x_start"], row["y_start"],
+                s=95, marker="o", facecolors="none",
+                edgecolors="#FFD54F", linewidths=2.0, ax=ax, zorder=4,
             )
 
         pitch.scatter(
-            row["x_start"],
-            row["y_start"],
-            s=START_DOT_SIZE,
-            marker="o",
-            color=color,
-            edgecolors="white",
-            linewidths=0.8,
-            ax=ax,
-            zorder=5,
-            alpha=alpha,
+            row["x_start"], row["y_start"],
+            s=START_DOT_SIZE, marker="o", color=color,
+            edgecolors="white", linewidths=0.8, ax=ax, zorder=5, alpha=alpha,
         )
 
     ax.set_title(title, fontsize=12)
@@ -267,77 +273,35 @@ def draw_pass_map(df: pd.DataFrame, title: str):
     legend_elements = [
         Line2D([0], [0], color=COLOR_SUCCESS, lw=2.5, label="Successful Pass"),
         Line2D([0], [0], color=COLOR_FAIL, lw=2.5, label="Unsuccessful Pass"),
-        Line2D(
-            [0],
-            [0],
-            color=COLOR_PROGRESSIVE,
-            lw=2.5,
-            label="Successful Progressive Pass (Opta)",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor="gray",
-            markeredgecolor="white",
-            markersize=6,
-            label="Start point (click)",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor="gray",
-            markeredgecolor="#FFD54F",
-            markeredgewidth=2,
-            markersize=7,
-            label="Has video",
-        ),
+        Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5,
+               label="Successful Progressive Pass (Opta)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray",
+               markeredgecolor="white", markersize=6, label="Start point (click)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray",
+               markeredgecolor="#FFD54F", markeredgewidth=2, markersize=7,
+               label="Has video"),
     ]
 
     legend = ax.legend(
-        handles=legend_elements,
-        loc="upper left",
-        bbox_to_anchor=(0.01, 0.99),
-        frameon=True,
-        facecolor="white",
-        edgecolor="#cccccc",
-        shadow=False,
-        fontsize="x-small",
-        labelspacing=0.5,
-        borderpad=0.5,
+        handles=legend_elements, loc="upper left", bbox_to_anchor=(0.01, 0.99),
+        frameon=True, facecolor="white", edgecolor="#cccccc", shadow=False,
+        fontsize="x-small", labelspacing=0.5, borderpad=0.5,
     )
     legend.get_frame().set_alpha(1.0)
 
     arrow = FancyArrowPatch(
-        (0.45, 0.05),
-        (0.55, 0.05),
-        transform=fig.transFigure,
-        arrowstyle="-|>",
-        mutation_scale=15,
-        linewidth=2,
-        color="#333333",
+        (0.45, 0.05), (0.55, 0.05), transform=fig.transFigure,
+        arrowstyle="-|>", mutation_scale=15, linewidth=2, color="#333333",
     )
     fig.patches.append(arrow)
+    fig.text(0.5, 0.02, "Attack Direction",
+             ha="center", va="center", fontsize=9, color="#333333")
 
-    fig.text(
-        0.5, 0.02, "Attack Direction",
-        ha="center", va="center", fontsize=9, color="#333333",
-    )
-
-    # ── ESSENCIAL: forçar o layout ANTES de renderizar ──
     fig.tight_layout()
-
-    # ── Forçar o renderer a calcular todas as transformações ──
     fig.canvas.draw()
 
-    # ── Salvar SEM bbox_inches='tight' ──
-    # Assim o tamanho em pixels será exatamente FIG_W * FIG_DPI  x  FIG_H * FIG_DPI
-    # e ax.transData permanece válido para a imagem gerada.
     buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=FIG_DPI)   # <── SEM bbox_inches='tight'
+    fig.savefig(buf, format="png", dpi=FIG_DPI)
     buf.seek(0)
     img_obj = Image.open(buf)
     return img_obj, ax, fig
@@ -370,6 +334,7 @@ elif pass_filter == "Progressive Only":
     ].reset_index(drop=True)
 
 stats = compute_stats(df)
+mins = MINUTES_PLAYED
 
 # ==========================
 # Layout
@@ -380,77 +345,68 @@ with col_stats:
     st.subheader("Statistics")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total Passes", stats["total_passes"])
-    c2.metric("Successful Passes", stats["successful_passes"])
+    metric_with_p90(c1, "Total Passes", stats["total_passes"], mins)
+    metric_with_p90(c2, "Successful", stats["successful_passes"], mins)
+    # Accuracy é percentual — não normalizar
     c3.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
 
     st.divider()
 
     st.subheader("Progressive Passes")
     p1, p2, p3 = st.columns(3)
-    p1.metric("Total", stats["progressive_passes"])
-    p2.metric("Successful", stats["progressive_successful_passes"])
+    metric_with_p90(p1, "Total", stats["progressive_passes"], mins)
+    metric_with_p90(p2, "Successful", stats["progressive_successful_passes"], mins)
     p3.metric("Accuracy", f'{stats["progressive_accuracy_pct"]:.1f}%')
 
     st.divider()
 
     st.subheader("Final Third")
     c7, c8, c9 = st.columns(3)
-    c7.metric("Total", stats["final_third_total"])
-    c8.metric("Successful", stats["final_third_success"])
-    c9.metric("Unsuccessful", stats["final_third_unsuccess"])
+    metric_with_p90(c7, "Total", stats["final_third_total"], mins)
+    metric_with_p90(c8, "Successful", stats["final_third_success"], mins)
+    metric_with_p90(c9, "Unsuccessful", stats["final_third_unsuccess"], mins)
     st.metric("Accuracy", f'{stats["final_third_accuracy_pct"]:.1f}%')
 
     st.divider()
 
     st.subheader("Passes Into the Box")
     d1, d2, d3 = st.columns(3)
-    d1.metric("Total", stats["box_total"])
-    d2.metric("Successful", stats["box_success"])
-    d3.metric("Unsuccessful", stats["box_unsuccess"])
+    metric_with_p90(d1, "Total", stats["box_total"], mins)
+    metric_with_p90(d2, "Successful", stats["box_success"], mins)
+    metric_with_p90(d3, "Unsuccessful", stats["box_unsuccess"], mins)
     st.metric("Accuracy", f'{stats["box_accuracy_pct"]:.1f}%')
 
 with col_right:
     st.subheader("Pass Map (click the start dot)")
 
-    img_obj, ax, fig = draw_pass_map(df, title=f"Pass Map - {selected_match}")
+    img_obj, ax, fig = draw_pass_map(df, title=f"Pass Map — {selected_match}")
 
-    # ── Largura de exibição no Streamlit ──
     DISPLAY_WIDTH = 780
     click = streamlit_image_coordinates(img_obj, width=DISPLAY_WIDTH)
 
     selected_pass = None
 
     if click is not None:
-        # Tamanho real da imagem salva (pixels)
         real_w, real_h = img_obj.size
-
-        # Tamanho que o componente reporta (pixels CSS do navegador)
         disp_w = click["width"]
         disp_h = click["height"]
 
-        # Converter o clique CSS → pixel real na imagem
         pixel_x = click["x"] * (real_w / disp_w)
         pixel_y = click["y"] * (real_h / disp_h)
-
-        # Matplotlib usa (0,0) no canto inferior-esquerdo → inverter Y
         mpl_pixel_y = real_h - pixel_y
 
-        # Converter pixel → coordenada de dados do campo
         field_x, field_y = ax.transData.inverted().transform((pixel_x, mpl_pixel_y))
 
-        # Encontrar o passe mais próximo dentro do raio
         df_sel = df.copy()
         df_sel["dist"] = np.sqrt(
             (df_sel["x_start"] - field_x) ** 2
             + (df_sel["y_start"] - field_y) ** 2
         )
 
-        RADIUS = 5.0          # raio reduzido p/ melhor precisão
+        RADIUS = 5.0
         candidates = df_sel[df_sel["dist"] < RADIUS].copy()
 
         if not candidates.empty:
-            # Prioridade: menor distância (o mais perto do clique)
             candidates = candidates.sort_values(by="dist", ascending=True)
             selected_pass = candidates.iloc[0]
 
