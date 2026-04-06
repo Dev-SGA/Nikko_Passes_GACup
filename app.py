@@ -31,18 +31,14 @@ GOAL_X = 120
 GOAL_Y = 40
 
 # Progressive pass thresholds converted to StatsBomb pitch scale
-# Approximation:
-# 30m -> 24 units
-# 15m -> 12 units
-# 10m -> 8 units
 PROG_OWN_HALF_THRESHOLD = 24
 PROG_CROSS_HALF_THRESHOLD = 12
 PROG_OPP_HALF_THRESHOLD = 8
 
 # Colors
-COLOR_SUCCESS = "#8E8E8E"       # gray
-COLOR_FAIL = "#F2A3A3"          # very light red
-COLOR_PROGRESSIVE = "#2F80ED"  # blue
+COLOR_SUCCESS = "#8E8E8E"
+COLOR_FAIL = "#F2A3A3"
+COLOR_PROGRESSIVE = "#2F80ED"
 
 # ==========================
 # DATA
@@ -85,20 +81,6 @@ def distance_to_goal(x, y):
     return np.sqrt((GOAL_X - x) ** 2 + (GOAL_Y - y) ** 2)
 
 def is_progressive_pass(x_start, y_start, x_end, y_end) -> bool:
-    """
-    Progressive pass using an Opta-style criterion based on distance reduction
-    toward the opponent goal.
-
-    Thresholds used:
-    - own half to own half: at least 30m closer to goal
-    - own half to opponent half: at least 15m closer to goal
-    - opponent half to opponent half: at least 10m closer to goal
-
-    Converted to StatsBomb scale:
-    - 30m -> 24 units
-    - 15m -> 12 units
-    - 10m -> 8 units
-    """
     start_dist = distance_to_goal(x_start, y_start)
     end_dist = distance_to_goal(x_end, y_end)
     gain = start_dist - end_dist
@@ -267,25 +249,10 @@ def draw_pass_map(df: pd.DataFrame, title: str):
         Line2D([0], [0], color=COLOR_SUCCESS, lw=2.5, label="Successful Pass"),
         Line2D([0], [0], color=COLOR_FAIL, lw=2.5, label="Unsuccessful Pass"),
         Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5, label="Successful Progressive Pass (Opta)"),
-        Line2D(
-            [0], [0],
-            marker="o",
-            color="w",
-            markerfacecolor="gray",
-            markeredgecolor="white",
-            markersize=6,
-            label="Start point (click)"
-        ),
-        Line2D(
-            [0], [0],
-            marker="o",
-            color="w",
-            markerfacecolor="gray",
-            markeredgecolor="#FFD54F",
-            markeredgewidth=2,
-            markersize=7,
-            label="Has video"
-        ),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markeredgecolor="white",
+               markersize=6, label="Start point (click)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markeredgecolor="#FFD54F",
+               markeredgewidth=2, markersize=7, label="Has video"),
     ]
 
     legend = ax.legend(
@@ -324,6 +291,7 @@ def draw_pass_map(df: pd.DataFrame, title: str):
     )
 
     fig.tight_layout()
+    fig.canvas.draw()
 
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
@@ -351,9 +319,7 @@ if pass_filter == "Successful Only":
 elif pass_filter == "Unsuccessful Only":
     df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
 elif pass_filter == "Progressive Only":
-    df = df[
-        df["progressive"] & df["type"].str.contains("WON", case=False)
-    ].reset_index(drop=True)
+    df = df[df["progressive"] & df["type"].str.contains("WON", case=False)].reset_index(drop=True)
 
 stats = compute_stats(df)
 
@@ -365,7 +331,6 @@ col_stats, col_right = st.columns([1, 2], gap="large")
 with col_stats:
     st.subheader("Statistics")
 
-    # First shelf: totals only
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Passes", stats["total_passes"])
     c2.metric("Successful Passes", stats["successful_passes"])
@@ -373,7 +338,6 @@ with col_stats:
 
     st.divider()
 
-    # Second shelf: progressive passes
     st.subheader("Progressive Passes")
     p1, p2, p3 = st.columns(3)
     p1.metric("Total", stats["progressive_passes"])
@@ -423,18 +387,11 @@ with col_right:
             (df_sel["y_start"] - field_y) ** 2
         )
 
-        RADIUS = 7.0
-        candidates = df_sel[df_sel["dist"] < RADIUS].copy()
+        RADIUS = 4.0
+        candidates = df_sel[df_sel["dist"] <= RADIUS].copy()
 
         if not candidates.empty:
-            candidates["has_video"] = candidates["video"].apply(has_video_value)
-            candidates = candidates.sort_values(
-                by=["has_video", "dist"],
-                ascending=[False, True]
-            )
-            selected_pass = candidates.iloc[0]
-
-    plt.close(fig)
+            selected_pass = candidates.loc[candidates["dist"].idxmin()]
 
     st.divider()
     st.subheader("Selected Event")
@@ -458,3 +415,5 @@ with col_right:
                 st.error(f"Video file not found: {selected_pass['video']}")
         else:
             st.warning("No video is attached to this event.")
+
+    plt.close(fig)
