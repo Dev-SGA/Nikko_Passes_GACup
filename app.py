@@ -185,7 +185,7 @@ def draw_pass_map(df: pd.DataFrame, title: str):
         pitch_color="#f5f5f5",
         line_color="#4a4a4a"
     )
-    fig, ax = pitch.draw(figsize=(7.9, 5.3))
+    fig, ax = pitch.draw(figsize=(10, 6.8))
     fig.set_dpi(110)
 
     ax.axvline(x=FINAL_THIRD_LINE_X, color="#FFD54F", linewidth=1.2, alpha=0.25)
@@ -319,7 +319,9 @@ if pass_filter == "Successful Only":
 elif pass_filter == "Unsuccessful Only":
     df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
 elif pass_filter == "Progressive Only":
-    df = df[df["progressive"] & df["type"].str.contains("WON", case=False)].reset_index(drop=True)
+    df = df[
+        df["progressive"] & df["type"].str.contains("WON", case=False)
+    ].reset_index(drop=True)
 
 stats = compute_stats(df)
 
@@ -387,7 +389,7 @@ with col_right:
             (df_sel["y_start"] - field_y) ** 2
         )
 
-        RADIUS = 4.0
+        RADIUS = 2.5
         candidates = df_sel[df_sel["dist"] <= RADIUS].copy()
 
         if not candidates.empty:
