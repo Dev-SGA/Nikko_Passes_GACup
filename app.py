@@ -1,4 +1,6 @@
 import streamlit as st
+import matplotlib
+matplotlib.use("Agg")          # backend headless – evita warnings no Streamlit
 import matplotlib.pyplot as plt
 from mplsoccer import Pitch
 import pandas as pd
@@ -70,8 +72,10 @@ matches_data = {
 def has_video_value(v) -> bool:
     return pd.notna(v) and str(v).strip() != ""
 
+
 def distance_to_goal(x, y):
     return np.sqrt((GOAL_X - x) ** 2 + (GOAL_Y - y) ** 2)
+
 
 def is_progressive_pass(x_start, y_start, x_end, y_end) -> bool:
     start_dist = distance_to_goal(x_start, y_start)
@@ -92,6 +96,7 @@ def is_progressive_pass(x_start, y_start, x_end, y_end) -> bool:
     else:
         return False
 
+
 # ==========================
 # Build DataFrames
 # ==========================
@@ -99,14 +104,14 @@ dfs_by_match = {}
 for match_name, events in matches_data.items():
     dfm = pd.DataFrame(
         events,
-        columns=["type", "x_start", "y_start", "x_end", "y_end", "video"]
+        columns=["type", "x_start", "y_start", "x_end", "y_end", "video"],
     )
     dfm["number"] = np.arange(1, len(dfm) + 1)
     dfm["progressive"] = dfm.apply(
         lambda row: is_progressive_pass(
             row["x_start"], row["y_start"], row["x_end"], row["y_end"]
         ),
-        axis=1
+        axis=1,
     )
     dfs_by_match[match_name] = dfm
 
@@ -129,25 +134,36 @@ def compute_stats(df: pd.DataFrame) -> dict:
     )
     progressive_accuracy = (
         progressive_successful / progressive_total * 100.0
-        if progressive_total else 0.0
+        if progressive_total
+        else 0.0
     )
 
     key_passes = int(df["video"].apply(has_video_value).sum())
 
     in_final_third = df["x_end"] >= FINAL_THIRD_LINE_X
     final_third_total = int(in_final_third.sum())
-    final_third_success = int((in_final_third & df["type"].str.contains("WON", case=False)).sum())
-    final_third_unsuccess = int((in_final_third & df["type"].str.contains("LOST", case=False)).sum())
-    final_third_accuracy = (final_third_success / final_third_total * 100.0) if final_third_total else 0.0
+    final_third_success = int(
+        (in_final_third & df["type"].str.contains("WON", case=False)).sum()
+    )
+    final_third_unsuccess = int(
+        (in_final_third & df["type"].str.contains("LOST", case=False)).sum()
+    )
+    final_third_accuracy = (
+        (final_third_success / final_third_total * 100.0) if final_third_total else 0.0
+    )
 
     to_box = (
-        (df["x_end"] >= BOX_X_MIN) &
-        (df["y_end"] >= BOX_Y_MIN) &
-        (df["y_end"] <= BOX_Y_MAX)
+        (df["x_end"] >= BOX_X_MIN)
+        & (df["y_end"] >= BOX_Y_MIN)
+        & (df["y_end"] <= BOX_Y_MAX)
     )
     box_total = int(to_box.sum())
-    box_success = int((to_box & df["type"].str.contains("WON", case=False)).sum())
-    box_unsuccess = int((to_box & df["type"].str.contains("LOST", case=False)).sum())
+    box_success = int(
+        (to_box & df["type"].str.contains("WON", case=False)).sum()
+    )
+    box_unsuccess = int(
+        (to_box & df["type"].str.contains("LOST", case=False)).sum()
+    )
     box_accuracy = (box_success / box_total * 100.0) if box_total else 0.0
 
     return {
@@ -169,17 +185,23 @@ def compute_stats(df: pd.DataFrame) -> dict:
         "box_accuracy_pct": round(box_accuracy, 2),
     }
 
+
 # ==========================
 # Draw pass map
 # ==========================
+# ----- FIGSIZE / DPI fixos para que a imagem gerada tenha tamanho previsível -----
+FIG_W, FIG_H = 7.9, 5.3
+FIG_DPI = 110
+
+
 def draw_pass_map(df: pd.DataFrame, title: str):
     pitch = Pitch(
         pitch_type="statsbomb",
         pitch_color="#f5f5f5",
-        line_color="#4a4a4a"
+        line_color="#4a4a4a",
     )
-    fig, ax = pitch.draw(figsize=(10, 6.8))
-    fig.set_dpi(110)
+    fig, ax = pitch.draw(figsize=(FIG_W, FIG_H))
+    fig.set_dpi(FIG_DPI)
 
     ax.axvline(x=FINAL_THIRD_LINE_X, color="#FFD54F", linewidth=1.2, alpha=0.25)
 
@@ -201,8 +223,10 @@ def draw_pass_map(df: pd.DataFrame, title: str):
             alpha = 0.75
 
         pitch.arrows(
-            row["x_start"], row["y_start"],
-            row["x_end"], row["y_end"],
+            row["x_start"],
+            row["y_start"],
+            row["x_end"],
+            row["y_end"],
             color=color,
             width=1.55,
             headwidth=2.25,
@@ -214,7 +238,8 @@ def draw_pass_map(df: pd.DataFrame, title: str):
 
         if has_vid:
             pitch.scatter(
-                row["x_start"], row["y_start"],
+                row["x_start"],
+                row["y_start"],
                 s=95,
                 marker="o",
                 facecolors="none",
@@ -225,7 +250,8 @@ def draw_pass_map(df: pd.DataFrame, title: str):
             )
 
         pitch.scatter(
-            row["x_start"], row["y_start"],
+            row["x_start"],
+            row["y_start"],
             s=START_DOT_SIZE,
             marker="o",
             color=color,
@@ -241,11 +267,34 @@ def draw_pass_map(df: pd.DataFrame, title: str):
     legend_elements = [
         Line2D([0], [0], color=COLOR_SUCCESS, lw=2.5, label="Successful Pass"),
         Line2D([0], [0], color=COLOR_FAIL, lw=2.5, label="Unsuccessful Pass"),
-        Line2D([0], [0], color=COLOR_PROGRESSIVE, lw=2.5, label="Successful Progressive Pass (Opta)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markeredgecolor="white",
-               markersize=6, label="Start point (click)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markeredgecolor="#FFD54F",
-               markeredgewidth=2, markersize=7, label="Has video"),
+        Line2D(
+            [0],
+            [0],
+            color=COLOR_PROGRESSIVE,
+            lw=2.5,
+            label="Successful Progressive Pass (Opta)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor="gray",
+            markeredgecolor="white",
+            markersize=6,
+            label="Start point (click)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor="gray",
+            markeredgecolor="#FFD54F",
+            markeredgewidth=2,
+            markersize=7,
+            label="Has video",
+        ),
     ]
 
     legend = ax.legend(
@@ -274,35 +323,39 @@ def draw_pass_map(df: pd.DataFrame, title: str):
     fig.patches.append(arrow)
 
     fig.text(
-        0.5,
-        0.02,
-        "Attack Direction",
-        ha="center",
-        va="center",
-        fontsize=9,
-        color="#333333",
+        0.5, 0.02, "Attack Direction",
+        ha="center", va="center", fontsize=9, color="#333333",
     )
 
+    # ── ESSENCIAL: forçar o layout ANTES de renderizar ──
     fig.tight_layout()
+
+    # ── Forçar o renderer a calcular todas as transformações ──
     fig.canvas.draw()
 
+    # ── Salvar SEM bbox_inches='tight' ──
+    # Assim o tamanho em pixels será exatamente FIG_W * FIG_DPI  x  FIG_H * FIG_DPI
+    # e ax.transData permanece válido para a imagem gerada.
     buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=FIG_DPI)   # <── SEM bbox_inches='tight'
     buf.seek(0)
     img_obj = Image.open(buf)
     return img_obj, ax, fig
+
 
 # ==========================
 # Sidebar
 # ==========================
 st.sidebar.header("Match Selection")
-selected_match = st.sidebar.radio("Choose the match", list(full_data.keys()), index=0)
+selected_match = st.sidebar.radio(
+    "Choose the match", list(full_data.keys()), index=0
+)
 
 st.sidebar.header("Pass Filter")
 pass_filter = st.sidebar.radio(
     "Filter passes",
     ["All Passes", "Successful Only", "Unsuccessful Only", "Progressive Only"],
-    index=0
+    index=0,
 )
 
 df = full_data[selected_match].copy()
@@ -312,7 +365,9 @@ if pass_filter == "Successful Only":
 elif pass_filter == "Unsuccessful Only":
     df = df[df["type"].str.contains("LOST", case=False)].reset_index(drop=True)
 elif pass_filter == "Progressive Only":
-    df = df[df["progressive"] & df["type"].str.contains("WON", case=False)].reset_index(drop=True)
+    df = df[
+        df["progressive"] & df["type"].str.contains("WON", case=False)
+    ].reset_index(drop=True)
 
 stats = compute_stats(df)
 
@@ -329,36 +384,77 @@ with col_stats:
     c2.metric("Successful Passes", stats["successful_passes"])
     c3.metric("Accuracy", f'{stats["accuracy_pct"]:.1f}%')
 
+    st.divider()
+
+    st.subheader("Progressive Passes")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Total", stats["progressive_passes"])
+    p2.metric("Successful", stats["progressive_successful_passes"])
+    p3.metric("Accuracy", f'{stats["progressive_accuracy_pct"]:.1f}%')
+
+    st.divider()
+
+    st.subheader("Final Third")
+    c7, c8, c9 = st.columns(3)
+    c7.metric("Total", stats["final_third_total"])
+    c8.metric("Successful", stats["final_third_success"])
+    c9.metric("Unsuccessful", stats["final_third_unsuccess"])
+    st.metric("Accuracy", f'{stats["final_third_accuracy_pct"]:.1f}%')
+
+    st.divider()
+
+    st.subheader("Passes Into the Box")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Total", stats["box_total"])
+    d2.metric("Successful", stats["box_success"])
+    d3.metric("Unsuccessful", stats["box_unsuccess"])
+    st.metric("Accuracy", f'{stats["box_accuracy_pct"]:.1f}%')
+
 with col_right:
     st.subheader("Pass Map (click the start dot)")
 
     img_obj, ax, fig = draw_pass_map(df, title=f"Pass Map - {selected_match}")
-    click = streamlit_image_coordinates(img_obj, width=980)
+
+    # ── Largura de exibição no Streamlit ──
+    DISPLAY_WIDTH = 780
+    click = streamlit_image_coordinates(img_obj, width=DISPLAY_WIDTH)
 
     selected_pass = None
 
     if click is not None:
+        # Tamanho real da imagem salva (pixels)
         real_w, real_h = img_obj.size
-        disp_w, disp_h = click["width"], click["height"]
 
+        # Tamanho que o componente reporta (pixels CSS do navegador)
+        disp_w = click["width"]
+        disp_h = click["height"]
+
+        # Converter o clique CSS → pixel real na imagem
         pixel_x = click["x"] * (real_w / disp_w)
         pixel_y = click["y"] * (real_h / disp_h)
 
+        # Matplotlib usa (0,0) no canto inferior-esquerdo → inverter Y
         mpl_pixel_y = real_h - pixel_y
-        coords_clicked = ax.transData.inverted().transform((pixel_x, mpl_pixel_y))
-        field_x, field_y = coords_clicked[0], coords_clicked[1]
 
+        # Converter pixel → coordenada de dados do campo
+        field_x, field_y = ax.transData.inverted().transform((pixel_x, mpl_pixel_y))
+
+        # Encontrar o passe mais próximo dentro do raio
         df_sel = df.copy()
         df_sel["dist"] = np.sqrt(
-            (df_sel["x_start"] - field_x) ** 2 +
-            (df_sel["y_start"] - field_y) ** 2
+            (df_sel["x_start"] - field_x) ** 2
+            + (df_sel["y_start"] - field_y) ** 2
         )
 
-        RADIUS = 4.0
-        candidates = df_sel[df_sel["dist"] <= RADIUS].copy()
+        RADIUS = 5.0          # raio reduzido p/ melhor precisão
+        candidates = df_sel[df_sel["dist"] < RADIUS].copy()
 
         if not candidates.empty:
-            selected_pass = candidates.loc[candidates["dist"].idxmin()]
+            # Prioridade: menor distância (o mais perto do clique)
+            candidates = candidates.sort_values(by="dist", ascending=True)
+            selected_pass = candidates.iloc[0]
+
+    plt.close(fig)
 
     st.divider()
     st.subheader("Selected Event")
@@ -382,5 +478,3 @@ with col_right:
                 st.error(f"Video file not found: {selected_pass['video']}")
         else:
             st.warning("No video is attached to this event.")
-
-    plt.close(fig)
